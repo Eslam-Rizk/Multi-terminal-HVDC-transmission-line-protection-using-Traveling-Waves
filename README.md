@@ -8,7 +8,7 @@ This project has two sides:
 Check full project on Matlab [here](https://github.com/Eslam-Rizk/Multi-terminal-HVDC-transmission-line-protection-using-Traveling-Waves/tree/main/HVDC%20Matlab)
 
 Here is the simulink code:
-```
+```octave
 function [tr12,tr14,tr24,tr23,tr34] = fcn(dt12,dt21,dt012,dt021,dt23,dt32,dt023,dt032,
 dt14,dt41,dt014,dt041,dt24,dt42,dt024,dt042,dt34,dt43,dt034,dt043)
  tr12=1; tr14=1; tr24=1; tr23=1; tr34=1;
@@ -129,7 +129,7 @@ Now we get the fault distance as shown:
 We used the one relay with ATMEGA328 & shunt resistor at on end of each T.L to contrlol the other relay at the other end of the same T.L.The use of a shunt resistor is to calculate the current through a line safely by measuring the voltage acrros the 1 ohm resistor, then we aquire the current using ohm's law (I = V / R).Since R is 1 ohm, then I=V.We measure the voltage by connecting on end of the resistor to the GROUND of the ATMEGA328 and the other end of the resistor to A0 pin (ADC) of the MCU.
 
 ### Controller MCU code :
-```
+```c
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdio.h>
@@ -226,7 +226,7 @@ int main() {
 ```
 
 ### Controlled MCU code :
-```
+```c
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdio.h>
