@@ -107,6 +107,7 @@ Now we get the fault distance as shown:
 
 ## Tools
 
+* Atmel Stuio
 * Arduino IDE
 * oscilloscope
 
@@ -129,53 +130,205 @@ We used the one relay with ATMEGA328 & shunt resistor at on end of each T.L to c
 
 ### Controller MCU code :
 ```
-float value1;
-int x=0;
-void setup() {
- // put your setup code here, to run once:
-pinMode(13,OUTPUT); //pin 13 as output(relay)
-pinMode(12,INPUT); //pin 12 as input (reset)
-pinMode(11,INPUT); //pin 11 as input (arduino2 fault)
-digitalWrite(13,LOW); //pin 13 is low
-Serial.begin(9600); //start serial
+#include <avr/io.h>
+#include <util/delay.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#define F_CPU 16000000UL
+#define BAUD 9600
+#define UBRR_VALUE F_CPU/16/BAUD-1
+
+void init_uart() {
+    // Set baud rate
+    UBRR0H = (uint8_t)(UBRR_VALUE >> 8);
+    UBRR0L = (uint8_t)UBRR_VALUE;
+    
+    // Enable receiver and transmitter
+    UCSR0B |= (1 << RXEN0) | (1 << TXEN0);
+    
+    // Set frame format: 8 data bits, 1 stop bit, no parity
+    UCSR0C |= (1 << UCSZ01) | (1 << UCSZ00);
 }
-void loop() {
- // put your main code here, to run repeatedly:
- value1=(analogRead(A0)*1.8180048077); //voltage across shunt resistor or current 
-since R=1 // 4882.8125=5*1000/1024
- if(x==0){Serial.print("I1=");Serial.print(value1);Serial.println(" mA, ");}//print 
-current value to serial monitor
- if(value1>=100 && digitalRead(11)==HIGH ){digitalWrite(13,HIGH);x=1;} //if 
-current >100ma & arduino2 has fault, activate the relays
- if(digitalRead(12)==HIGH){digitalWrite(13,LOW);x=0;} //if reset button os pressed, 
-close the relays
- delay(1);
+
+void uart_send_byte(uint8_t data) {
+    // Wait for empty transmit buffer
+    while (!(UCSR0A & (1 << UDRE0)));
+    
+    // Put data into buffer, sends the data
+    UDR0 = data;
+}
+
+void init_adc() {
+    // Set reference voltage to AVcc
+    ADMUX |= (1 << REFS0);
+    
+    // Set prescaler to 128
+    ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
+    
+    // Enable ADC
+    ADCSRA |= (1 << ADEN);
+}
+
+uint16_t read_adc(uint8_t channel) {
+    // Select ADC channel
+    ADMUX = (ADMUX & 0xF0) | (channel & 0x0F);
+    
+    // Start single conversion
+    ADCSRA |= (1 << ADSC);
+    
+    // Wait for conversion to complete
+    while (ADCSRA & (1 << ADSC));
+    
+    // Return ADC value
+    return ADC;
+}
+
+int main() {
+    // Set pin 11 as output (arduino2 fault)
+    DDRB |= (1 << DDB3);
+    // Set pin 11 to low
+    PORTB &= ~(1 << PORTB3);
+	
+	// Initialize UART
+    init_uart();
+
+	// Initialize ADC
+    init_adc();
+    
+    // Enable global interrupts
+    sei();
+	
+
+	while(1) {
+		// Read the voltage across the shunt resistor or the current
+		uint16_t adc_value = read_adc(0);
+		// If current is greater than or equal to 100mA and arduino2 has fault, activate the relay
+		if (adc_value >= 100) {
+			PORTB |= (1 << PORTB3);
+			}
+		else{PORTB &= ~(1 << PORTB3);}
+		// Print the current value to the serial monitor
+		char buffer[10];
+		sprintf(buffer, "%u", adc_value);
+		for (int i = 0; buffer[i] != '\0'; i++) {
+			uart_send_byte(buffer[i]);
+		}
+		uart_send_byte('\r');
+		uart_send_byte('\n');
+		
+		// Wait for a short duration
+		_delay_ms(10);
+	}
+    
+	return 0;
 }
 ```
 
 ### Controlled MCU code :
 ```
-float value1;
-void setup() {
- // put your setup code here, to run once:
-//pinMode(13,OUTPUT); //pin 13 as output(relay)
-//pinMode(12,INPUT); //pin 12 as input (reset)
-pinMode(11,OUTPUT); //pin 11 as OUTPUT (arduino2 fault)
-digitalWrite(11,LOW); //pin 11 is low
-Serial.begin(9600); //start serial
+#include <avr/io.h>
+#include <util/delay.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#define F_CPU 16000000UL
+#define BAUD 9600
+#define UBRR_VALUE F_CPU/16/BAUD-1
+
+void init_uart() {
+    // Set baud rate
+    UBRR0H = (uint8_t)(UBRR_VALUE >> 8);
+    UBRR0L = (uint8_t)UBRR_VALUE;
+    
+    // Enable receiver and transmitter
+    UCSR0B |= (1 << RXEN0) | (1 << TXEN0);
+    
+    // Set frame format: 8 data bits, 1 stop bit, no parity
+    UCSR0C |= (1 << UCSZ01) | (1 << UCSZ00);
 }
-void loop() {
- // put your main code here, to run repeatedly:
- value1=(analogRead(A0)*1.8180048077); //voltage across shunt resistor or current 
-since R=1 // 4882.8125=5*1000/1024
- Serial.print("I1=");Serial.print(value1);Serial.println(" mA, "); //print current 
-value to serial monitor
- if(value1>=25){digitalWrite(11,HIGH);delay(500);} //if current >100ma, activate 
-fault relay to notify arduino1
- else{digitalWrite(11,LOW);} //if no fault,close fault relay
- //if(digitalRead(12)==HIGH){digitalWrite(13,LOW);} //if reset button os pressed, 
-close the relays
- delay(1);
+
+void uart_send_byte(uint8_t data) {
+    // Wait for empty transmit buffer
+    while (!(UCSR0A & (1 << UDRE0)));
+    
+    // Put data into buffer, sends the data
+    UDR0 = data;
+}
+
+void init_adc() {
+    // Set reference voltage to AVcc
+    ADMUX |= (1 << REFS0);
+    
+    // Set prescaler to 128
+    ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
+    
+    // Enable ADC
+    ADCSRA |= (1 << ADEN);
+}
+
+uint16_t read_adc(uint8_t channel) {
+    // Select ADC channel
+    ADMUX = (ADMUX & 0xF0) | (channel & 0x0F);
+    
+    // Start single conversion
+    ADCSRA |= (1 << ADSC);
+    
+    // Wait for conversion to complete
+    while (ADCSRA & (1 << ADSC));
+    
+    // Return ADC value
+    return ADC;
+}
+
+int main() {
+    // Set pin 13 as output (relay)
+    DDRB |= (1 << DDB5);
+    // Set pin 12 and 11 as input (reset and arduino2 fault)
+    DDRB &= ~((1 << DDB4) | (1 << DDB3));
+    // Set pin 13 to low
+    PORTB &= ~(1 << PORTB5);
+	
+	// Initialize UART
+    init_uart();
+
+	// Initialize ADC
+    init_adc();
+    
+    // Enable global interrupts
+    sei();
+	
+	// Initialize relay state to off
+	uint8_t relay_state = 0;
+
+	while(1) {
+		// Read the voltage across the shunt resistor or the current
+		uint16_t adc_value = read_adc(0);
+		// If current is greater than or equal to 100mA and arduino2 has fault, activate the relay
+		if (adc_value >= 100 && (PINB & (1 << PINB3))) {
+			PORTB |= (1 << PORTB5);
+			relay_state = 1;
+		}
+		// If reset button is pressed, close the relay
+		if (!(PINB & (1 << PINB4))) {
+			PORTB &= ~(1 << PORTB5);
+			relay_state = 0;
+		}
+		// Print the current value to the serial monitor
+		if (relay_state == 0) {
+			char buffer[10];
+			sprintf(buffer, "%u", adc_value);
+			for (int i = 0; buffer[i] != '\0'; i++) {
+				uart_send_byte(buffer[i]);
+			}
+			uart_send_byte('\r');
+			uart_send_byte('\n');
+		}
+		// Wait for a short duration
+		_delay_ms(10);
+	}
+    
+	return 0;
 }
 
 ```
